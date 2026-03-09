@@ -182,7 +182,7 @@ def main():
         
         sources = get_source_nodes(ground_truths[idx])
         n_sources = len(sources)
-        n_pairs = n_sources * (n_sources - 1) // 2  # C(n,2) = n!/((n-2)!*2!)
+        n_pairs = n_sources * (n_sources - 1) // 2  # C(n,2) = n!/(2!*(n-2)!)
         
         print(f"\nSample {idx}:")
         print(f"  Number of sources: {n_sources}")

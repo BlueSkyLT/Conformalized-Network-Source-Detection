@@ -79,7 +79,7 @@ def plot_probability_barchart(probs, source_nodes, title, output_path=None,
         probs_to_plot = probs
     
     # Limit to top_k if specified
-    if top_k is not None and top_k < n_nodes:
+    if top_k is not None:
         nodes = nodes[:top_k]
         probs_to_plot = probs_to_plot[:top_k]
     
