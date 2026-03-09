@@ -93,6 +93,7 @@ def plot_probability_barchart(probs, source_nodes, title, output_path=None,
     
     # Plot bars
     x_positions = np.arange(len(nodes))
+    print(f"Plotting {len(nodes)} nodes (top_k={top_k}, sort_by_prob={sort_by_prob})")
     bars = ax.bar(x_positions, probs_to_plot, color=colors, edgecolor='black', 
                   linewidth=0.5, alpha=0.8)
     
@@ -107,8 +108,8 @@ def plot_probability_barchart(probs, source_nodes, title, output_path=None,
         tick_positions = x_positions[::step]
         tick_labels = nodes[::step]
         ax.set_xticks(tick_positions)
-        ax.set_xticklabels(tick_labels, rotation=90, fontsize=8)
-        ax.set_xlabel('Node ID (subset shown)', fontsize=12)
+        #ax.set_xticklabels(tick_labels, rotation=90, fontsize=8)
+        ax.set_xlabel('Nodes', fontsize=12)
     
     ax.set_ylabel('P(Source)', fontsize=12)
     ax.set_ylim(0, 1)
