@@ -11,6 +11,7 @@ Usage:
     python clm/plot_gt_distances.py --graph highSchool --res_path path/to/res.pickle
     python clm/plot_gt_distances.py --graph highSchool --res_path path/to/res.pickle --sample_index 0
     python clm/plot_gt_distances.py --graph highSchool --res_path path/to/res.pickle --aggregate
+    python clm/plot_gt_distances.py --graph highSchool --aggregate --max_samples 800  --res_path SD-STGCN/output/test_res/highSchool/SIR_nsrc14_Rzero43.44_beta0.25_gamma0.15_T30_ls21200_nf16/res.pickle --output clm/SIR_nsrc14_Rzero43.44_beta0.25_gamma0.15_T30_ls21200_nf16.png
 """
 
 import os
@@ -90,7 +91,7 @@ def plot_distance_histogram(distances, title, output_path=None, bins='auto'):
         print("Warning: No finite distances to plot!")
         return
     
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(10, 3))
     
     # Determine bins
     if bins == 'auto':
@@ -106,8 +107,8 @@ def plot_distance_histogram(distances, title, output_path=None, bins='auto'):
     # Add statistics
     mean_dist = np.mean(finite_distances)
     median_dist = np.median(finite_distances)
-    plt.axvline(mean_dist, color='red', linestyle='--', linewidth=2, label=f'Mean: {mean_dist:.2f}')
-    plt.axvline(median_dist, color='orange', linestyle='--', linewidth=2, label=f'Median: {median_dist:.2f}')
+    plt.axvline(mean_dist, color='red', linestyle='--', linewidth=2, label=f'Mean: {mean_dist:.4f}')
+    plt.axvline(median_dist, color='orange', linestyle='--', linewidth=2, label=f'Median: {median_dist:.4f}')
     plt.legend()
     
     plt.tight_layout()
