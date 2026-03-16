@@ -1,123 +1,203 @@
-# CLM (Conformal Label-set Multi-source) Visualization Tools
+# CLM (Conformal Language Modeling) Framework for CPNet
 
-This folder contains visualization scripts for analyzing source detection datasets.
+This folder implements the CLM-enhanced conformal prediction framework for network source detection. The approach applies rejection and stopping rules inspired by Conformal Language Modeling (https://doi.org/10.48550/arXiv.2306.10193) to refine conformal prediction sets.
 
-## Scripts
+## Overview
 
-### 1. `plot_gt_distances.py` - Ground Truth Source Distance Histogram
+CPNet-CLM uses three lambda-based rules to refine conformal prediction sets:
 
-Plots a histogram of pairwise shortest-path distances between ground truth source nodes.
+1. **λ₁ - Diversity Rejection**: Rejects nodes too close (in graph distance) to already-selected sources
+2. **λ₂ - Quality Rejection**: Rejects nodes with prediction probability below threshold  
+3. **λ₃ - Stopping Rule**: Stops adding nodes when cumulative probability exceeds threshold
 
-**Usage:**
-```bash
-# Plot distances for a single sample (auto-selects first sample with multiple sources)
-python clm/plot_gt_distances.py --graph highSchool --res_path SD-STGCN/output/test_res/highSchool/exp1/res.pickle
-
-# Plot distances for a specific sample
-python clm/plot_gt_distances.py --graph highSchool --res_path path/to/res.pickle --sample_index 5
-
-# Aggregate distances across multiple samples
-python clm/plot_gt_distances.py --graph highSchool --res_path path/to/res.pickle --aggregate --max_samples 100
-
-# Save to file
-python clm/plot_gt_distances.py --graph highSchool --res_path path/to/res.pickle --output distances.png
-```
-
-**Arguments:**
-| Argument | Description |
-|----------|-------------|
-| `--graph` | Graph name (e.g., `highSchool`, `bkFratB`, `sfhh`) |
-| `--res_path` | Path to `res.pickle` file |
-| `--sample_index` | Specific sample index to analyze |
-| `--aggregate` | Aggregate distances across all samples |
-| `--max_samples` | Maximum samples to process when aggregating (default: 100) |
-| `--output` | Output file path (default: display) |
-
-**Output:**
-- Histogram showing distribution of pairwise distances
-- Statistics: mean and median distances
+The lambda parameters are calibrated using the **Learn Then Test (LTT)** framework with Pareto testing.
 
 ---
 
-### 2. `plot_sdstgcn_probs.py` - SD-STGCN Probability Bar Chart
+## Files
 
-Plots a bar chart showing SD-STGCN predicted P(source) for all nodes.
+| File | Description |
+|------|-------------|
+| `lambda_rules.py` | Lambda rules implementation (diversity, quality, stopping) |
+| `ltt.py` | Learn Then Test framework with Pareto testing |
+| `main.py` | Main script to run full CLM-CP process |
+| `test.py` | Test script to validate Lambda_valid configurations |
+| `plot_gt_distances.py` | Visualization: GT source distance histogram |
+| `plot_sdstgcn_probs.py` | Visualization: Probability bar chart with CP/CLM status |
+| `output/` | Directory for saved results (Lambda_valid, metrics) |
 
-**Usage:**
-```bash
-# Plot probabilities for sample 0
-python clm/plot_sdstgcn_probs.py --res_path SD-STGCN/output/test_res/highSchool/exp1/res.pickle --sample_index 0
+---
 
-# Show only top 50 nodes by probability
-python clm/plot_sdstgcn_probs.py --res_path path/to/res.pickle --sample_index 0 --top_k 50
+## Lambda Rules (`lambda_rules.py`)
 
-# Sort by probability
-python clm/plot_sdstgcn_probs.py --res_path path/to/res.pickle --sample_index 0 --sort
+### λ₁: Diversity Rejection
 
-# Show all nodes (even if > 100)
-python clm/plot_sdstgcn_probs.py --res_path path/to/res.pickle --sample_index 0 --all_nodes
+Rejects node v if it's too similar to already-selected sources:
 
-# Save to file
-python clm/plot_sdstgcn_probs.py --res_path path/to/res.pickle --sample_index 0 --output probs.png
+$$\text{Reject } v \text{ if: } \max_{v_j \in \mathcal{C}_\lambda} \{ K(\text{Dist}(v, v_j)) \cdot \hat{\pi}(v) \} > \lambda_1$$
+
+- **K(d)**: Distance decay kernel `exp(-γd)`
+- **Dist(v, vⱼ)**: Shortest path distance in graph
+
+### λ₂: Quality Rejection
+
+Rejects nodes with low prediction probability:
+
+$$\text{Reject } v \text{ if: } \hat{\pi}(v) < \lambda_2$$
+
+### λ₃: Stopping Rule
+
+Stops adding nodes when cumulative probability is sufficient:
+
+$$\text{Stop if: } \sum_{v \in \mathcal{C}_\lambda} \hat{\pi}(v) \ge \lambda_3$$
+
+---
+
+## LTT Framework (`ltt.py`)
+
+The Learn Then Test framework finds valid lambda configurations with statistical guarantees:
+
+1. **Generate candidate grid** Λ of lambda configurations
+2. **Split calibration data** into optimization (D_opt) and validation (D_val) sets
+3. **Stage 1 - Pareto Testing**: Find Pareto-optimal candidates on D_opt (balancing recall and efficiency)
+4. **Stage 2 - Sequential Testing**: Test candidates on D_val with FWER control
+
+```python
+from ltt import calibrate_ltt
+
+best_lambda, valid_lambdas = calibrate_ltt(
+    calibration_data, graph,
+    alpha=0.1,      # Recall error tolerance
+    delta=0.1,      # Statistical failure probability
+    epsilon=0.1,    # Target risk level
+    n_grid_points=10
+)
 ```
 
-**Arguments:**
-| Argument | Description |
-|----------|-------------|
-| `--res_path` | Path to `res.pickle` file |
-| `--sample_index` | Sample index to visualize (default: 0) |
-| `--top_k` | Only show top K nodes by probability |
-| `--sort` | Sort nodes by probability (descending) |
-| `--all_nodes` | Show all nodes even if many (default: auto-limit to 100) |
-| `--output` | Output file path (default: display) |
+---
 
-**Output:**
-- Bar chart with nodes on x-axis, P(source) on y-axis
-- Ground truth source nodes highlighted in green
-- Statistics box showing mean probabilities for GT vs non-GT nodes
+## Usage
+
+### Quick Start
+
+```bash
+# Run full CLM process
+python clm/main.py --graph highSchool \
+    --exp_name SIR_nsrc7_Rzero43.44_beta0.25_gamma0.15_T30_ls21200_nf16
+
+# Test if found lambdas improve results
+python clm/test.py --graph highSchool \
+    --exp_name SIR_nsrc7_Rzero43.44_beta0.25_gamma0.15_T30_ls21200_nf16
+```
+
+### Visualization
+
+```bash
+# Plot top 100 probability nodes with CP set and CLM rejection status
+python clm/plot_sdstgcn_probs.py \
+    --res_path SD-STGCN/output/test_res/highSchool/SIR_nsrc7_Rzero43.44_beta0.25_gamma0.15_T30_ls21200_nf16/res.pickle \
+    --sample_index 0 \
+    --top_k 100 \
+    --clm_results clm/output/highSchool/SIR_nsrc7.../clm_results.pickle \
+    --output plot.png
+```
+
+**Color coding in visualization:**
+- 🟢 **Green**: Ground truth source nodes
+- 🔵 **Blue**: Nodes accepted by CLM (in refined set)
+- 🟠 **Orange**: Nodes rejected by CLM (was in original CP set)
+- ⚪ **Gray**: Nodes not in CP set
+
+---
+
+## Output Files
+
+Results are saved to `clm/output/<graph>/<exp_name>/`:
+
+| File | Contents |
+|------|----------|
+| `clm_results.pickle` | Full results including lambda, CP sets, refined sets, metrics |
+| `lambda_valid.txt` | Text file listing valid lambda configurations |
 
 ---
 
 ## Example Workflow
 
-```bash
-# Step 1: Ensure you have a res.pickle file
-# (This is generated by running SD-STGCN testing or main.py)
-
-# Step 2: Check which samples have multiple sources
-python -c "
+```python
+# 1. Load data
+from lambda_rules import LambdaRules
+from ltt import calibrate_ltt
 import pickle
-with open('SD-STGCN/output/test_res/highSchool/exp1/res.pickle', 'rb') as f:
+import networkx as nx
+
+# Load graph and predictions
+G = nx.read_edgelist('graph.edgelist', nodetype=int)
+with open('res.pickle', 'rb') as f:
     data = pickle.load(f)
-import numpy as np
-for i, gt in enumerate(data['ground_truth'][0][:10]):
-    print(f'Sample {i}: {np.sum(gt)} sources')
-"
 
-# Step 3: Plot distance histogram for a sample with multiple sources
-python clm/plot_gt_distances.py --graph highSchool \
-    --res_path SD-STGCN/output/test_res/highSchool/exp1/res.pickle \
-    --sample_index 5 \
-    --output results/distance_hist.png
+# 2. Prepare calibration data
+calibration_data = {
+    'probs': [...],           # List of probability arrays
+    'ground_truths': [...],   # List of ground truth arrays
+    'cp_sets': [...],         # List of original CP sets
+    'infected_nodes': [...]   # List of infected node sets
+}
 
-# Step 4: Plot probability bar chart for the same sample
-python clm/plot_sdstgcn_probs.py \
-    --res_path SD-STGCN/output/test_res/highSchool/exp1/res.pickle \
-    --sample_index 5 \
-    --sort \
-    --output results/prob_barchart.png
+# 3. Run LTT calibration
+best_lambda, valid_lambdas = calibrate_ltt(calibration_data, G)
+
+# 4. Apply lambda rules
+rules = LambdaRules(
+    lambda1=best_lambda[0],
+    lambda2=best_lambda[1],
+    lambda3=best_lambda[2]
+)
+
+refined_set = rules.refine_cp_set(cp_set, probs, G, infected_nodes)
 ```
 
 ---
 
-## Notes
+## Citation
 
-- The `res.pickle` file is generated by SD-STGCN and contains:
-  - `predictions`: Model output probabilities `(n_nodes, 2)` where `[:, 1]` is P(source)
-  - `ground_truth`: One-hot encoded true sources `(n_nodes,)`
-  - `inputs`: Initial epidemic states
-  - `logits`: Raw logits before softmax
+This implementation is inspired by:
 
-- If a sample has only 1 source, the distance histogram will be empty (need ≥2 sources for pairs)
+```bibtex
+@article{quach2023conformal,
+  title={Conformal Language Modeling},
+  author={Quach, Victor and Fisch, Adam and Schuster, Tal and others},
+  journal={arXiv preprint arXiv:2306.10193},
+  year={2023}
+}
+```
 
-- For samples with n sources, there are n*(n-1)/2 pairwise distances (combinations)
+---
+
+## Legacy Scripts
+
+### `plot_gt_distances.py` - Ground Truth Source Distance Histogram
+
+Plots histogram of pairwise shortest-path distances between ground truth source nodes.
+
+```bash
+python clm/plot_gt_distances.py --graph highSchool \
+    --res_path path/to/res.pickle \
+    --sample_index 0 \
+    --output distances.png
+```
+
+### `plot_sdstgcn_probs.py` - SD-STGCN Probability Bar Chart
+
+Plots bar chart of P(source) for each node with optional CP/CLM status visualization.
+
+```bash
+# Basic usage
+python clm/plot_sdstgcn_probs.py --res_path path/to/res.pickle --sample_index 0
+
+# With CLM results
+python clm/plot_sdstgcn_probs.py --res_path path/to/res.pickle \
+    --sample_index 0 \
+    --clm_results clm/output/.../clm_results.pickle \
+    --top_k 100 \
+    --output probs.png
+```
