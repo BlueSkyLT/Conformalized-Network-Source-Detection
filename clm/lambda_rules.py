@@ -309,6 +309,10 @@ def generate_lambda_grid(n_points: int = 10) -> List[Tuple[float, float, float]]
     """
     lambda1_values = np.linspace(0.1, 1.0, n_points)
     lambda2_values = np.linspace(0.01, 0.5, n_points)
+    # λ₃ can exceed 1.0 because it represents a cumulative probability threshold
+    # across multiple nodes. When multiple high-probability nodes are present,
+    # stopping earlier (λ₃ < 1) creates more compact sets, while λ₃ > 1 allows
+    # more nodes to be included before stopping.
     lambda3_values = np.linspace(0.5, 2.0, n_points)
     
     grid = []

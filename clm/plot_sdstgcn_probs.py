@@ -246,10 +246,8 @@ def main():
     parser.add_argument('--output', type=str, default=None, help='Output path for the plot (default: display)')
     parser.add_argument('--top_k', type=int, default=100, 
                         help='Show top K nodes by probability (default: 100)')
-    parser.add_argument('--sort', action='store_true', default=True,
-                        help='Sort nodes by probability (descending, default: True)')
     parser.add_argument('--no_sort', action='store_true',
-                        help='Do not sort nodes (overrides --sort)')
+                        help='Do not sort nodes by probability')
     parser.add_argument('--all_nodes', action='store_true',
                         help='Show all nodes even if there are many')
     parser.add_argument('--clm_results', type=str, default=None,
@@ -332,8 +330,8 @@ def main():
     if args.all_nodes:
         top_k = None
     
-    # Determine sorting
-    sort_by_prob = args.sort and not args.no_sort
+    # Determine sorting (default is True, --no_sort sets it to False)
+    sort_by_prob = not args.no_sort
     
     # Generate title
     title = f'SD-STGCN Source Probabilities\n(Sample {args.sample_index}, {n_nodes} nodes, {n_sources} GT sources)'
