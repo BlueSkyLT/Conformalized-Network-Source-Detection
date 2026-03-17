@@ -22,9 +22,25 @@ The lambda parameters are calibrated using the **Learn Then Test (LTT)** framewo
 | `ltt.py` | Learn Then Test framework with Pareto testing |
 | `main.py` | Main script to run full CLM-CP process |
 | `test.py` | Test script to validate Lambda_valid configurations |
+| `utils.py` | **Pure NumPy/PyTorch utility functions (no TensorFlow dependency)** |
 | `plot_gt_distances.py` | Visualization: GT source distance histogram |
 | `plot_sdstgcn_probs.py` | Visualization: Probability bar chart with CP/CLM status |
 | `output/` | Directory for saved results (Lambda_valid, metrics) |
+
+---
+
+## Dependencies
+
+The CLM module uses **pure NumPy** implementations and does **not require TensorFlow**. Optional PyTorch support is available for GPU acceleration.
+
+Required:
+- `numpy`
+- `scipy`
+- `networkx`
+- `matplotlib` (for visualization)
+
+Optional:
+- `torch` (PyTorch) - for GPU-accelerated scoring functions
 
 ---
 

@@ -29,12 +29,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     from lambda_rules import LambdaRules, evaluate_lambda_config
     from ltt import LTTCalibrator, calibrate_ltt
+    from utils import recall_score, recall_score_gtunknown, cpquantile, set_truncate
 except ImportError:
     from clm.lambda_rules import LambdaRules, evaluate_lambda_config
     from clm.ltt import LTTCalibrator, calibrate_ltt
-
-from utils.score_convert import recall_score, recall_score_gtunknown
-from utils.functions import cpquantile
+    from clm.utils import recall_score, recall_score_gtunknown, cpquantile, set_truncate
 
 
 def load_graph(graph_name: str) -> nx.Graph:
@@ -106,7 +105,7 @@ def compute_original_cp_sets(predictions: List[np.ndarray],
     n_test = len(test_indices)
     
     # Compute calibration scores
-    from utils.score_convert import set_truncate
+    # Note: set_truncate is imported from clm.utils (no TensorFlow dependency)
     cfscore_calib = []
     for i in calib_indices:
         infected_nodes = np.nonzero(inputs[i])[0]
