@@ -16,6 +16,7 @@ Reference: https://doi.org/10.48550/arXiv.2306.10193
 
 import os
 import sys
+import logging
 import numpy as np
 from scipy.stats import binom
 from typing import List, Tuple, Dict, Set, Optional
@@ -46,7 +47,8 @@ class LambdaCandidate:
 
 def compute_empirical_risk(lambda_config: Tuple[float, float, float],
                            samples: List[Dict], G: nx.Graph,
-                           gamma: float = 1.0) -> float:
+                           gamma: float = 1.0,
+                           logger: Optional[logging.Logger] = None) -> Tuple[float, Dict]:
     """
     Compute empirical risk (1 - recall) for a lambda configuration.
     
@@ -56,12 +58,16 @@ def compute_empirical_risk(lambda_config: Tuple[float, float, float],
                  'probs', 'ground_truths', 'cp_set', 'infected_nodes'
         G: NetworkX graph
         gamma: Distance decay parameter
+        logger: Optional logger for detailed output
     
     Returns:
-        Empirical risk = 1 - average recall
+        Tuple of (empirical_risk, details_dict)
     """
     total_recall = 0.0
     n_samples = len(samples)
+    n_gt_rejected = 0
+    n_full_recall = 0
+    recalls = []
     
     for sample in samples:
         recall, _, _ = evaluate_lambda_config(
@@ -73,15 +79,38 @@ def compute_empirical_risk(lambda_config: Tuple[float, float, float],
             sample.get('infected_nodes'),
             gamma
         )
+        recalls.append(recall)
         total_recall += recall
+        
+        if recall == 1.0:
+            n_full_recall += 1
+        else:
+            # Count GT sources that were rejected
+            gt_sources = set(np.nonzero(sample['ground_truths'])[0])
+            rules = LambdaRules(lambda_config[0], lambda_config[1], lambda_config[2], gamma)
+            refined = rules.refine_cp_set(
+                sample['cp_set'], sample['probs'], G, sample.get('infected_nodes')
+            )
+            n_gt_rejected += len(gt_sources) - len(gt_sources & refined)
     
     avg_recall = total_recall / n_samples if n_samples > 0 else 0.0
-    return 1.0 - avg_recall
+    empirical_risk = 1.0 - avg_recall
+    
+    details = {
+        'avg_recall': avg_recall,
+        'n_full_recall': n_full_recall,
+        'n_samples': n_samples,
+        'n_gt_rejected': n_gt_rejected,
+        'recall_std': np.std(recalls) if recalls else 0.0,
+        'recall_min': np.min(recalls) if recalls else 0.0
+    }
+    
+    return empirical_risk, details
 
 
 def compute_efficiency(lambda_config: Tuple[float, float, float],
                        samples: List[Dict], G: nx.Graph,
-                       gamma: float = 1.0) -> float:
+                       gamma: float = 1.0) -> Tuple[float, Dict]:
     """
     Compute efficiency metric (negative average set size).
     
@@ -94,10 +123,13 @@ def compute_efficiency(lambda_config: Tuple[float, float, float],
         gamma: Distance decay parameter
     
     Returns:
-        Negative average set size
+        Tuple of (negative_avg_size, details_dict)
     """
     total_size = 0.0
     n_samples = len(samples)
+    sizes = []
+    total_fp_removed = 0
+    total_fp_remaining = 0
     
     for sample in samples:
         _, _, size = evaluate_lambda_config(
@@ -109,10 +141,32 @@ def compute_efficiency(lambda_config: Tuple[float, float, float],
             sample.get('infected_nodes'),
             gamma
         )
+        sizes.append(size)
         total_size += size
+        
+        # Count FP statistics
+        gt_sources = set(np.nonzero(sample['ground_truths'])[0])
+        rules = LambdaRules(lambda_config[0], lambda_config[1], lambda_config[2], gamma)
+        refined = rules.refine_cp_set(
+            sample['cp_set'], sample['probs'], G, sample.get('infected_nodes')
+        )
+        fp_in_cp = sample['cp_set'] - gt_sources
+        fp_in_refined = refined - gt_sources
+        total_fp_removed += len(fp_in_cp) - len(fp_in_refined)
+        total_fp_remaining += len(fp_in_refined)
     
     avg_size = total_size / n_samples if n_samples > 0 else 0.0
-    return -avg_size  # Negative for efficiency (smaller is better)
+    
+    details = {
+        'avg_size': avg_size,
+        'size_std': np.std(sizes) if sizes else 0.0,
+        'size_min': np.min(sizes) if sizes else 0.0,
+        'size_max': np.max(sizes) if sizes else 0.0,
+        'total_fp_removed': total_fp_removed,
+        'total_fp_remaining': total_fp_remaining
+    }
+    
+    return -avg_size, details  # Negative for efficiency (smaller is better)
 
 
 def is_pareto_dominated(candidate: LambdaCandidate, 
@@ -267,8 +321,8 @@ class LTTCalibrator:
         
         for l1, l2, l3 in grid:
             config = (l1, l2, l3)
-            risk = compute_empirical_risk(config, samples, G, self.gamma)
-            efficiency = compute_efficiency(config, samples, G, self.gamma)
+            risk, _ = compute_empirical_risk(config, samples, G, self.gamma)
+            efficiency, _ = compute_efficiency(config, samples, G, self.gamma)
             
             candidate = LambdaCandidate(
                 lambda1=l1, lambda2=l2, lambda3=l3,
@@ -280,8 +334,10 @@ class LTTCalibrator:
     
     def calibrate(self, calibration_data: Dict, G: nx.Graph,
                   opt_ratio: float = 0.5,
-                  verbose: bool = True) -> Tuple[Optional[Tuple[float, float, float]], 
-                                                  List[Tuple[float, float, float]]]:
+                  verbose: bool = True,
+                  logger: Optional[logging.Logger] = None) -> Tuple[Optional[Tuple[float, float, float]], 
+                                                  List[Tuple[float, float, float]],
+                                                  Dict]:
         """
         Run LTT calibration to find valid lambda configurations.
         
@@ -294,9 +350,10 @@ class LTTCalibrator:
             G: NetworkX graph
             opt_ratio: Fraction of data for optimization (rest for validation)
             verbose: Print progress information
+            logger: Optional logger for detailed output
         
         Returns:
-            Tuple of (best_lambda, valid_lambdas_list)
+            Tuple of (best_lambda, valid_lambdas_list, details_dict)
             best_lambda is None if no valid configuration found
         """
         probs_list = calibration_data['probs']
@@ -308,9 +365,12 @@ class LTTCalibrator:
         n_opt = int(n_total * opt_ratio)
         n_val = n_total - n_opt
         
+        log = logger.info if logger else print
+        log_debug = logger.debug if logger else (lambda x: None)
+        
         if verbose:
-            print(f"LTT Calibration: {n_total} samples")
-            print(f"  Optimization set: {n_opt}, Validation set: {n_val}")
+            log(f"LTT Calibration: {n_total} samples")
+            log(f"  Optimization set: {n_opt}, Validation set: {n_val}")
         
         # Split data
         opt_samples = self._prepare_samples(
@@ -326,67 +386,111 @@ class LTTCalibrator:
         
         # Stage 1: Find Pareto frontier on optimization set
         if verbose:
-            print("Stage 1: Finding Pareto frontier on optimization set...")
+            log("Stage 1: Finding Pareto frontier on optimization set...")
         
+        grid = generate_lambda_grid(self.n_grid_points)
         candidates = self._create_candidates(opt_samples, G)
         pareto_candidates = find_pareto_frontier(candidates)
         
         if verbose:
-            print(f"  Found {len(pareto_candidates)} Pareto-optimal candidates")
+            log(f"  Grid size: {len(grid)}, Pareto candidates: {len(pareto_candidates)}")
         
         # Sort by risk (ascending) for sequential testing
         pareto_candidates.sort(key=lambda c: c.risk)
         
-        # Stage 2: Fixed sequence testing on validation set
+        # Stage 2: Fixed sequence testing on validation set with detailed logging
         if verbose:
-            print("Stage 2: Sequential testing on validation set...")
+            log("Stage 2: Sequential testing on validation set...")
+            log(f"  {'Lambda Config':<30} {'Val Risk':>10} {'P-value':>10} {'Recall':>10} {'Size':>10} {'Status':>10}")
+            log("  " + "-" * 80)
         
         valid_lambdas = []
+        test_details = []
         
         for candidate in pareto_candidates:
-            # Compute empirical risk on validation set
-            val_risk = compute_empirical_risk(candidate.config, val_samples, G, self.gamma)
+            # Compute detailed empirical risk on validation set
+            val_risk, risk_details = compute_empirical_risk(
+                candidate.config, val_samples, G, self.gamma, logger
+            )
+            _, eff_details = compute_efficiency(
+                candidate.config, val_samples, G, self.gamma
+            )
             
             # Compute p-value
             p_value = compute_binomial_pvalue(n_val, val_risk, self.epsilon)
             candidate.p_value = p_value
             
+            status = "PASS" if p_value >= self.delta else "FAIL"
+            
+            detail = {
+                'config': candidate.config,
+                'val_risk': val_risk,
+                'p_value': p_value,
+                'avg_recall': risk_details['avg_recall'],
+                'avg_size': eff_details['avg_size'],
+                'n_gt_rejected': risk_details['n_gt_rejected'],
+                'n_full_recall': risk_details['n_full_recall'],
+                'total_fp_removed': eff_details['total_fp_removed'],
+                'total_fp_remaining': eff_details['total_fp_remaining'],
+                'status': status
+            }
+            test_details.append(detail)
+            
             if verbose:
-                print(f"  λ=({candidate.lambda1:.2f}, {candidate.lambda2:.2f}, {candidate.lambda3:.2f}): "
-                      f"risk={val_risk:.3f}, p={p_value:.3f}")
+                config_str = f"({candidate.lambda1:.3f}, {candidate.lambda2:.3f}, {candidate.lambda3:.3f})"
+                log(f"  {config_str:<30} {val_risk:>10.4f} {p_value:>10.4f} {risk_details['avg_recall']:>10.4f} {eff_details['avg_size']:>10.2f} {status:>10}")
+                
+                # Log warnings for GT rejections
+                if risk_details['n_gt_rejected'] > 0 and logger:
+                    logger.warning(f"    ⚠️  GT sources rejected: {risk_details['n_gt_rejected']}, "
+                                  f"Full recall samples: {risk_details['n_full_recall']}/{n_val}")
             
             # Test: accept if p-value >= delta
             if p_value >= self.delta:
                 valid_lambdas.append(candidate)
             else:
                 # Fixed sequence testing: stop at first failure (FWER control)
+                if verbose:
+                    log(f"  ⛔ Stopping at first failure (FWER control)")
                 break
         
         if verbose:
-            print(f"Found {len(valid_lambdas)} valid configurations")
+            log(f"\nFound {len(valid_lambdas)} valid configurations")
+        
+        # Compile details
+        details = {
+            'grid_size': len(grid),
+            'n_pareto': len(pareto_candidates),
+            'n_valid': len(valid_lambdas),
+            'n_opt': n_opt,
+            'n_val': n_val,
+            'test_details': test_details
+        }
         
         # Select best (most efficient) among valid configurations
         if len(valid_lambdas) == 0:
             if verbose:
-                print("Warning: No valid lambda found. Using default.")
-            return None, []
+                log("⚠️  Warning: No valid lambda found. Using default.")
+            return None, [], details
         
         # Select most efficient (largest negative efficiency = smallest set)
         best_candidate = min(valid_lambdas, key=lambda c: -c.efficiency)
         
         if verbose:
-            print(f"Best λ: ({best_candidate.lambda1:.2f}, {best_candidate.lambda2:.2f}, "
-                  f"{best_candidate.lambda3:.2f})")
+            log(f"Best λ: ({best_candidate.lambda1:.4f}, {best_candidate.lambda2:.4f}, "
+                  f"{best_candidate.lambda3:.4f})")
         
-        return best_candidate.config, [c.config for c in valid_lambdas]
+        return best_candidate.config, [c.config for c in valid_lambdas], details
 
 
 def calibrate_ltt(calibration_data: Dict, G: nx.Graph,
                   alpha: float = 0.1, delta: float = 0.1, 
                   epsilon: float = 0.1, gamma: float = 1.0,
                   n_grid_points: int = 10,
-                  verbose: bool = True) -> Tuple[Optional[Tuple[float, float, float]], 
-                                                  List[Tuple[float, float, float]]]:
+                  verbose: bool = True,
+                  logger: Optional[logging.Logger] = None) -> Tuple[Optional[Tuple[float, float, float]], 
+                                                  List[Tuple[float, float, float]],
+                                                  Dict]:
     """
     Convenience function for LTT calibration.
     
@@ -399,12 +503,13 @@ def calibrate_ltt(calibration_data: Dict, G: nx.Graph,
         gamma: Distance decay parameter
         n_grid_points: Grid resolution
         verbose: Print progress
+        logger: Optional logger for detailed output
     
     Returns:
-        Tuple of (best_lambda, valid_lambdas_list)
+        Tuple of (best_lambda, valid_lambdas_list, details_dict)
     """
     calibrator = LTTCalibrator(alpha, delta, epsilon, gamma, n_grid_points)
-    return calibrator.calibrate(calibration_data, G, verbose=verbose)
+    return calibrator.calibrate(calibration_data, G, verbose=verbose, logger=logger)
 
 
 if __name__ == '__main__':
@@ -452,7 +557,7 @@ if __name__ == '__main__':
         calibration_data['infected_nodes'].append(infected)
     
     # Run LTT calibration
-    best_lambda, valid_lambdas = calibrate_ltt(
+    best_lambda, valid_lambdas, details = calibrate_ltt(
         calibration_data, G,
         alpha=0.1, delta=0.1, epsilon=0.1,
         n_grid_points=5,  # Small for demo
@@ -462,3 +567,5 @@ if __name__ == '__main__':
     print(f"\nResult:")
     print(f"  Best λ: {best_lambda}")
     print(f"  Valid λ count: {len(valid_lambdas)}")
+    print(f"  Grid size: {details['grid_size']}")
+    print(f"  Pareto candidates: {details['n_pareto']}")
