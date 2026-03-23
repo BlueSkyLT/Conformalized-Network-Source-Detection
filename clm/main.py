@@ -413,7 +413,7 @@ def main():
     parser.add_argument('--ltt_alpha', type=float, default=0.1, help='LTT recall tolerance')
     parser.add_argument('--ltt_delta', type=float, default=0.1, help='LTT failure probability')
     parser.add_argument('--gamma', type=float, default=1.0, help='Distance decay parameter')
-    parser.add_argument('--n_grid', type=int, default=5, help='Lambda grid points per dimension')
+    parser.add_argument('--n_grid', type=int, default=10, help='Lambda grid points per dimension')
     parser.add_argument('--output_dir', type=str, default='clm/output', help='Output directory')
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
     parser.add_argument('--verbose', action='store_true', default=True, 
