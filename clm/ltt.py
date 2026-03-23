@@ -388,12 +388,11 @@ class LTTCalibrator:
         if verbose:
             log("Stage 1: Finding Pareto frontier on optimization set...")
         
-        grid = generate_lambda_grid(self.n_grid_points)
         candidates = self._create_candidates(opt_samples, G)
         pareto_candidates = find_pareto_frontier(candidates)
         
         if verbose:
-            log(f"  Grid size: {len(grid)}, Pareto candidates: {len(pareto_candidates)}")
+            log(f"  Grid size: {len(candidates)}, Pareto candidates: {len(pareto_candidates)}")
         
         # Sort by risk (ascending) for sequential testing
         pareto_candidates.sort(key=lambda c: c.risk)
@@ -459,7 +458,7 @@ class LTTCalibrator:
         
         # Compile details
         details = {
-            'grid_size': len(grid),
+            'grid_size': len(candidates),  # Use candidates length as grid size
             'n_pareto': len(pareto_candidates),
             'n_valid': len(valid_lambdas),
             'n_opt': n_opt,
