@@ -189,6 +189,8 @@ def plot_graph_with_probabilities(G, probs, source_nodes, title, output_path=Non
     print("  Computing layout...")
     if layout == 'spring':
         # Use larger k for more spacing between nodes
+        # For large graphs (>100 nodes): k = 3.0/sqrt(n) provides good separation
+        # For small graphs (<= 100 nodes): k = 1.5 gives reasonable spacing without over-spreading
         k = 3.0 / np.sqrt(G.number_of_nodes()) if G.number_of_nodes() > 100 else 1.5
         iterations = 200  # More iterations for better convergence
         pos = nx.spring_layout(G, k=k, iterations=iterations, seed=seed, scale=2.0)
@@ -272,12 +274,13 @@ def plot_graph_with_probabilities(G, probs, source_nodes, title, output_path=Non
     ]
     ax.legend(handles=legend_elements, loc='upper left', fontsize=10)
     
-    # Add statistics text including nodes with prob > 0
+    # Add statistics text - always show full graph stats for context
+    # (even in zoomed view, users want to see overall picture)
     gt_probs = node_probs_all[np.isin(node_list_all, source_nodes)]
     non_gt_mask = ~np.isin(node_list_all, source_nodes)
     non_gt_probs = node_probs_all[non_gt_mask]
     
-    stats_text = f"Nodes with P > 0: {n_positive_prob} / {n_nodes}\n"
+    stats_text = f"Full graph - Nodes with P > 0: {n_positive_prob} / {n_nodes}\n"
     stats_text += f"GT Sources: mean P={np.mean(gt_probs):.3f}, max={np.max(gt_probs):.3f}\n"
     stats_text += f"Non-Sources: mean P={np.mean(non_gt_probs):.3f}, max={np.max(non_gt_probs):.3f}"
     
