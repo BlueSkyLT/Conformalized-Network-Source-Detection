@@ -130,7 +130,7 @@ def plot_graph_with_probabilities(G, probs, source_nodes, title, output_path=Non
                                    figsize=(20, 20), layout='spring', 
                                    node_size_scale=True, min_node_size=30, 
                                    max_node_size=300, cmap='RdYlBu_r',
-                                   edge_alpha=0.3, seed=42):
+                                   edge_alpha=0.2, seed=42):
     """
     Plot graph with nodes colored by probability and GT sources highlighted.
     
@@ -163,9 +163,9 @@ def plot_graph_with_probabilities(G, probs, source_nodes, title, output_path=Non
     # Compute layout
     print("  Computing layout...")
     if layout == 'spring':
-        # For large graphs, use smaller k (more spacing) and fewer iterations
+        # For large graphs, use smaller k (more spacing) and more iterations for convergence
         k = 2.0 / np.sqrt(n_nodes) if n_nodes > 100 else None
-        iterations = 100 if n_nodes > 500 else 50
+        iterations = 100 if n_nodes > 500 else 50  # Large graphs need more iterations
         pos = nx.spring_layout(G, k=k, iterations=iterations, seed=seed)
     elif layout == 'kamada_kawai':
         # Slower but often better for medium graphs
